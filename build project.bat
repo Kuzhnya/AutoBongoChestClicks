@@ -4,12 +4,26 @@ echo Starting build process...
 :: Устанавливаем кодировку консоли на UTF-8, чтобы избежать проблем с отображением текста
 chcp 65001 >nul
 
-:: Указываем путь к Python 
-set PYTHON="C:\Users\User\AppData\Local\Programs\Python\Python312\python.exe"
+:: Указываем путь к Python
+set PYTHON="C:\Users\*****UR USER HERE****\AppData\Local\Programs\Python\Python312\python.exe"
 
 :: Проверяем, существует ли Python
 if not exist %PYTHON% (
-    echo Python 3.11 not found at %PYTHON%! Please check the path.
+    echo Python 3.12 not found at %PYTHON%! Please check the path.
+    pause
+    exit /b 1
+)
+
+:: Проверяем наличие необходимых файлов
+set "MISSING_FILES="
+if not exist "main.py" set "MISSING_FILES=%MISSING_FILES% main.py"
+if not exist "kuzhnya.ico" set "MISSING_FILES=%MISSING_FILES% kuzhnya.ico"
+if not exist "languages.json" set "MISSING_FILES=%MISSING_FILES% languages.json"
+if not exist "settings.json" set "MISSING_FILES=%MISSING_FILES% settings.json"
+
+if not "%MISSING_FILES%"=="" (
+    echo The following required files are missing:%MISSING_FILES%
+    echo Please ensure all files are present in the project directory.
     pause
     exit /b 1
 )
@@ -35,7 +49,7 @@ if exist ImageAutoclicker.spec (
 %PYTHON% -m PyInstaller ^
     --onefile ^
     --windowed ^
-    --icon=kuzhnya.ico ^
+    --icon="kuzhnya.ico" ^
     --name ImageAutoclicker ^
     --add-data "languages.json;." ^
     --add-data "settings.json;." ^
@@ -55,23 +69,43 @@ if exist ImageAutoclicker.spec (
 :: Проверяем, успешно ли прошла сборка
 if %ERRORLEVEL% neq 0 (
     echo Build failed! Check the error messages above.
+    echo PyInstaller exit code: %ERRORLEVEL%
     pause
     exit /b %ERRORLEVEL%
 )
 
 echo Build completed successfully!
 
-:: Удаляем временные файлы
-rmdir /s /q build
-del ImageAutoclicker.spec
+:: Перемещаем EXE-файл в корневую папку
+if exist dist\ImageAutoclicker.exe (
+    move dist\ImageAutoclicker.exe .
+    if %ERRORLEVEL% neq 0 (
+        echo Failed to move ImageAutoclicker.exe to project root!
+        pause
+        exit /b %ERRORLEVEL%
+    )
+    echo EXE file moved to project root.
+) else (
+    echo ImageAutoclicker.exe not found in dist folder! Build may have failed.
+    pause
+    exit /b 1
+)
 
-echo Cleaned up temporary files.
+:: Удаляем временные файлы после перемещения EXE
+if exist build (
+    rmdir /s /q build
+    echo Cleaned up build directory.
+)
 
-:: Перемещаем EXE-файл в корневую папку (опционально)
-move dist\ImageAutoclicker.exe .
-rmdir /s /q dist
+if exist dist (
+    rmdir /s /q dist
+    echo Cleaned up dist directory.
+)
 
-echo EXE file moved to project root.
+if exist ImageAutoclicker.spec (
+    del ImageAutoclicker.spec
+    echo Cleaned up spec file.
+)
 
 echo Build process finished!
 pause
