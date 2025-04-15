@@ -21,6 +21,20 @@ import mss
 import numpy as np
 import cv2
 import keyboard
+import logging
+import atexit
+
+# Настраиваем логирование
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# Создаем файловый обработчик с режимом перезаписи (mode='w')
+file_handler = logging.FileHandler("autoclicker_debug.log", mode='w')
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
 
 try:
     ct.windll.shcore.SetProcessDpiAwareness(1)
@@ -53,6 +67,8 @@ DEFAULT_SETTINGS = {
 class AutoclickerApp:
     def __init__(self, root):
         self.root = root
+        self.has_error = False
+        self.is_closing = False  # Флаг, чтобы избежать повторного вызова on_close
         self.info_links = []
         self.settings = load_settings(DEFAULT_SETTINGS)
         self.languages = self.load_languages()
@@ -78,22 +94,25 @@ class AutoclickerApp:
         self.hotkeys = self.settings.get("hotkeys", DEFAULT_SETTINGS["hotkeys"])
         self.waiting_for_hotkey = None
         self.total_clicks = 0
-        self.sct = mss.mss()  # Инициализация mss
-        self.monitors = self.sct.monitors  # Инициализация мониторов
+        self.sct = mss.mss()
+        self.monitors = self.sct.monitors
         self.setup_ui()
         self.apply_theme()
-        self.set_dark_title_bar()
-        self.setup_system_tray()
         self.setup_hotkeys()
-        # Обработчик закрытия окна
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         if self.is_startup_launch() and self.settings["autostart"]:
+            logging.debug("Autostart detected.")
             if self.temp_image_paths:
+                logging.debug("Images found. Minimizing to tray and starting click process.")
                 self.minimize_to_tray()
                 self.start_clicking()
             else:
-                self.restore_from_tray()  # Открываем в оконном режиме, если нет изображений
+                logging.debug("No images found. Restoring to window mode.")
+                self.restore_from_tray()
+        else:
+            logging.debug("Not an autostart launch. Starting in window mode.")
+            self.root.deiconify()
 
     def load_languages(self):
         try:
@@ -137,7 +156,8 @@ class AutoclickerApp:
                             {"label": "Discord", "url": "https://discord.com/invite/p5FSuKUwQ3"},
                             {"label": "Telegram", "url": "https://t.me/kuzhnya"},
                             {"label": "Steam", "url": "https://steamcommunity.com/id/Kuzhnya/"},
-                            {"label": "Steam Информация о программе", "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3460723612"}
+                            {"label": "Steam Информация о программе",
+                             "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3460723612"}
                         ]
                     },
                     "error_no_image": "Сначала выберите изображение",
@@ -151,7 +171,9 @@ class AutoclickerApp:
                     "warning": "Предупреждение",
                     "invalid_hotkey": "Недопустимая клавиша! Выберите другую клавишу (Enter и прочие коммандные клавиши не поддерживаются).",
                     "hotkey_conflict": "Эта клавиша уже назначена для другой функции!",
-                    "area_cleared_message": "Область поиска очищена. Теперь поиск будет выполняться по всему экрану."
+                    "area_cleared_message": "Область поиска очищена. Теперь поиск будет выполняться по всему экрану.",
+                    "restore": "Восстановить",  # Добавляем ключ
+                    "exit": "Выход"  # Добавляем ключ
                 },
                 "ENG": {
                     "title": "Image Autoclicker",
@@ -188,7 +210,8 @@ class AutoclickerApp:
                             {"label": "Discord", "url": "https://discord.com/invite/p5FSuKUwQ3"},
                             {"label": "Telegram", "url": "https://t.me/kuzhnya"},
                             {"label": "Steam", "url": "https://steamcommunity.com/id/Kuzhnya/"},
-                            {"label": "Steam info about program (RU)", "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3460723612"}
+                            {"label": "Steam info about program (RU)",
+                             "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3460723612"}
                         ]
                     },
                     "error_no_image": "Please select an image first",
@@ -202,7 +225,9 @@ class AutoclickerApp:
                     "warning": "Warning",
                     "invalid_hotkey": "Invalid key! Choose another key (Enter and Esc are not supported).",
                     "hotkey_conflict": "This key is already assigned to another function!",
-                    "area_cleared_message": "Search area has been cleared. Search will now be performed on the entire screen."
+                    "area_cleared_message": "Search area has been cleared. Search will now be performed on the entire screen.",
+                    "restore": "Restore",  # Добавляем ключ
+                    "exit": "Exit"  # Добавляем ключ
                 }
             }
 
@@ -238,9 +263,25 @@ class AutoclickerApp:
         self.root.title(self.languages[self.settings["language"]]["title"])
         self.root.geometry(self.settings.get("window_geometry", "900x900+100+100"))
         self.root.minsize(520, 500)
+        # Устанавливаем иконку для окна и панели задач
         try:
-            self.root.iconbitmap("kuzhnya.ico")
-        except tk.TclError as e:
+            # Определяем путь к иконке, не требуя её наличия рядом с исполняемым файлом
+            if getattr(sys, 'frozen', False):
+                # Если приложение упаковано (например, через PyInstaller)
+                icon_path = os.path.join(sys._MEIPASS, "kuzhnya.ico")
+            else:
+                # Если запускается как скрипт
+                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kuzhnya.ico")
+
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+                # Устанавливаем иконку для окна (включая панель задач)
+                img = Image.open(icon_path)
+                photo = ImageTk.PhotoImage(img)
+                self.root.wm_iconphoto(True, photo)
+            else:
+                print(f"Icon file not found at: {icon_path}")
+        except Exception as e:
             print(f"Error setting window icon: {e}")
 
         self.main_frame = tk.Frame(self.root)
@@ -751,67 +792,104 @@ class AutoclickerApp:
         self.notebook.config(dark_theme=self.settings["dark_theme"])
         self.notebook.redraw()
 
-    def set_dark_title_bar(self):
-        try:
-            self.root.update()
-            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-            set_window_attribute = ct.windll.dwmapi.DwmSetWindowAttribute
-            hwnd = ct.windll.user32.GetParent(self.root.winfo_id())
-            rendering_policy = DWMWA_USE_IMMERSIVE_DARK_MODE
-            value = 2
-            value = ct.c_int(value)
-            set_window_attribute(hwnd, rendering_policy, ct.byref(value), ct.sizeof(value))
-
-            DWMWA_BORDER_COLOR = 34
-            color = 0x000000
-            set_window_attribute(hwnd, DWMWA_BORDER_COLOR, ct.byref(ct.c_int(color)), ct.sizeof(ct.c_int))
-        except Exception as e:
-            print(f"Error setting dark title bar or border color: {e}")
+    # def set_dark_title_bar(self):
+    #     try:
+    #         self.root.update()
+    #         DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+    #         set_window_attribute = ct.windll.dwmapi.DwmSetWindowAttribute
+    #         hwnd = ct.windll.user32.GetParent(self.root.winfo_id())
+    #         rendering_policy = DWMWA_USE_IMMERSIVE_DARK_MODE
+    #         value = 2
+    #         value = ct.c_int(value)
+    #         set_window_attribute(hwnd, rendering_policy, ct.byref(value), ct.sizeof(value))
+    #
+    #         DWMWA_BORDER_COLOR = 34
+    #         color = 0x000000
+    #         set_window_attribute(hwnd, DWMWA_BORDER_COLOR, ct.byref(ct.c_int(color)), ct.sizeof(ct.c_int))
+    #     except Exception as e:
+    #         print(f"Error setting dark title bar or border color: {e}")
 
     def setup_system_tray(self):
         try:
-            try:
-                image = Image.open("kuzhnya.ico")
-            except:
+            if getattr(sys, 'frozen', False):
+                resource_path = os.path.join(sys._MEIPASS, "kuzhnya.ico")
+            else:
+                resource_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "kuzhnya.ico")
+
+            logging.debug(f"Looking for icon at: {resource_path}")
+
+            if not os.path.exists(resource_path):
+                logging.error(f"Icon file {resource_path} not found. Using default icon.")
                 image = Image.new('RGB', (16, 16), color='blue')
+            else:
+                image = Image.open(resource_path)
+
             lang = self.settings["language"]
             self.icon = pystray.Icon(
                 "ImageAutoclicker",
                 icon=image,
                 title=self.languages[lang]["title"],
                 menu=pystray.Menu(
-                    pystray.MenuItem("Restore", self.restore_from_tray),
-                    pystray.MenuItem("Exit", self.on_close)
+                    pystray.MenuItem(self.languages[lang]["restore"], self.restore_from_tray),
+                    pystray.MenuItem(self.languages[lang]["exit"], self.on_close)
                 )
             )
-            self.icon_thread = threading.Thread(target=self.icon.run, daemon=True)
-            self.icon_thread.start()
+            logging.debug("System tray icon created successfully.")
         except Exception as e:
-            print(f"Error setting up system tray: {e}")
+            self.has_error = True  # Устанавливаем флаг ошибки
+            logging.error(f"Error setting up system tray: {e}")
+            self.icon = None
 
     def is_startup_launch(self):
         return "--startup" in sys.argv
 
     def minimize_to_tray(self):
         try:
+            if not self.icon or not hasattr(self.icon, '_running') or not self.icon._running:
+                self.setup_system_tray()
+
+            if not self.icon:
+                logging.error("Failed to create system tray icon")
+                self.root.withdraw()
+                self.has_error = True  # Устанавливаем флаг ошибки
+                return
+
             self.is_minimized = True
             self.root.withdraw()
-            if self.icon:
-                lang = self.settings["language"]
-                self.icon.notify(
-                    message=self.languages[lang]["minimize_notification"],
-                    title=self.languages[lang]["title"]
-                )
+            lang = self.settings["language"]
+
+            if not hasattr(self, 'icon_thread') or not self.icon_thread.is_alive():
+                self.icon_thread = threading.Thread(target=self.icon.run, daemon=True)
+                self.icon_thread.start()
+                logging.debug("System tray icon thread started.")
+                time.sleep(0.5)
+            else:
+                logging.debug("System tray icon thread already running.")
+
+            logging.debug("Attempting to show tray notification.")
+            self.icon.notify(
+                message=self.languages[lang]["minimize_notification"],
+                title=self.languages[lang]["title"]
+            )
+            logging.debug("Tray notification sent successfully.")
+            logging.debug("Application minimized to tray.")
         except Exception as e:
-            print(f"Error minimizing to tray: {e}")
+            self.has_error = True  # Устанавливаем флаг ошибки
+            logging.error(f"Error minimizing to tray: {e}")
+            self.root.deiconify()
 
     def restore_from_tray(self):
         try:
             self.is_minimized = False
             self.root.deiconify()
             self.root.lift()
+            # Останавливаем иконку в трее и сбрасываем её
+            if self.icon:
+                self.icon.stop()
+                self.icon = None  # Сбрасываем иконку, чтобы пересоздать при следующем сворачивании
+                logging.debug("System tray icon stopped and reset.")
         except Exception as e:
-            print(f"Error restoring from tray: {e}")
+            logging.error(f"Error restoring from tray: {e}")
 
     def on_closing(self):
         self.minimize_to_tray()  # Сворачиваем в трей при закрытии
@@ -882,7 +960,7 @@ class AutoclickerApp:
                 self.main_frame.config(bg="#F5F7FA")
                 self.root.config(bg="#F5F7FA")
             self.update_theme_button_style()
-            self.set_dark_title_bar()
+            # self.set_dark_title_bar()
         except Exception as e:
             print(f"Error applying theme: {e}")
 
@@ -967,21 +1045,44 @@ class AutoclickerApp:
         save_settings(self.settings)
         self.setup_hotkeys()
 
-    def set_autostart(self, enable):
+    def set_autostart(self, value):
         try:
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                                 winreg.KEY_ALL_ACCESS)
             app_name = "ImageAutoclicker"
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
-                if enable:
-                    app_path = os.path.abspath(__file__)
-                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, f'"{app_path}" --startup')
-                else:
-                    try:
-                        winreg.DeleteValue(key, app_name)
-                    except FileNotFoundError:
-                        pass
+
+            # Определяем путь приложения
+            if getattr(sys, 'frozen', False):
+                app_path = f'"{sys.executable}" --startup'
+            else:
+                app_path = f'"{sys.executable}" "{os.path.abspath(__file__)}" --startup'
+
+            if value:
+                # Проверяем, существует ли запись и совпадает ли она с новым значением
+                try:
+                    current_value, _ = winreg.QueryValueEx(key, app_name)
+                    if current_value == app_path:
+                        logging.debug("Autostart already set with the same path, skipping update.")
+                        winreg.CloseKey(key)
+                        return  # Ничего не делаем, если значение уже правильное
+                except FileNotFoundError:
+                    pass  # Запись не существует, продолжаем
+
+                # Включаем автозапуск
+                logging.debug(f"Autostart enabled with path: {app_path}")
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, app_path)
+            else:
+                # Выключаем автозапуск
+                logging.debug("Disabling autostart.")
+                try:
+                    winreg.DeleteValue(key, app_name)
+                except FileNotFoundError:
+                    pass  # Если записи нет, игнорируем ошибку
+
+            winreg.CloseKey(key)
         except Exception as e:
-            print(f"Error setting autostart: {e}")
+            self.has_error = True
+            logging.error(f"Error setting autostart: {e}")
 
     def update_values(self, event=None):
         try:
@@ -1184,17 +1285,17 @@ class AutoclickerApp:
 
     def configure_conditions(self):
         self.root.update()
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        set_window_attribute = ct.windll.dwmapi.DwmSetWindowAttribute
-        hwnd = ct.windll.user32.GetParent(self.root.winfo_id())
-        rendering_policy = DWMWA_USE_IMMERSIVE_DARK_MODE
-        value = 2
-        value = ct.c_int(value)
-        set_window_attribute(hwnd, rendering_policy, ct.byref(value), ct.sizeof(value))
-
-        DWMWA_BORDER_COLOR = 34
-        color = 0x000000
-        set_window_attribute(hwnd, DWMWA_BORDER_COLOR, ct.byref(ct.c_int(color)), ct.sizeof(ct.c_int))
+        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        # set_window_attribute = ct.windll.dwmapi.DwmSetWindowAttribute
+        # hwnd = ct.windll.user32.GetParent(self.root.winfo_id())
+        # rendering_policy = DWMWA_USE_IMMERSIVE_DARK_MODE
+        # value = 2
+        # value = ct.c_int(value)
+        # set_window_attribute(hwnd, rendering_policy, ct.byref(value), ct.sizeof(value))
+        #
+        # DWMWA_BORDER_COLOR = 34
+        # color = 0x000000
+        # set_window_attribute(hwnd, DWMWA_BORDER_COLOR, ct.byref(ct.c_int(color)), ct.sizeof(ct.c_int))
 
         conditions_window = tk.Toplevel(self.root)
         conditions_window.title(self.languages[self.settings["language"]]["conditions_window_title"])
@@ -1489,19 +1590,55 @@ class AutoclickerApp:
         self.apply_theme()
 
     def on_close(self):
+        if self.is_closing:  # Пропускаем, если метод уже вызван
+            return
+
+        self.is_closing = True  # Устанавливаем флаг, чтобы избежать повторного вызова
         try:
             if self.icon:
                 self.icon.stop()
+                self.icon = None
+                logging.debug("System tray icon stopped and reset on application close.")
+
             for temp_path in self.temp_image_paths:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
-            self.settings["window_geometry"] = self.root.geometry()
-            save_settings(self.settings)
-            self.root.destroy()
-        except Exception as e:
-            print(f"Error closing application: {e}")
 
+            # Сохраняем геометрию окна только если оно ещё существует
+            if self.root.winfo_exists():
+                self.settings["window_geometry"] = self.root.geometry()
+            save_settings(self.settings)
+
+        except Exception as e:
+            self.has_error = True
+            logging.error(f"Error closing application: {e}")
+
+        # Закрываем обработчик лога и удаляем файл после обработки ошибок
+        log_file = "autoclicker_debug.log"
+        for handler in logging.getLogger().handlers[:]:
+            if isinstance(handler, logging.FileHandler) and handler.baseFilename == os.path.abspath(log_file):
+                handler.close()
+                logging.getLogger().removeHandler(handler)
+                logging.debug(f"Log handler for {log_file} closed.")
+
+        # Удаляем лог-файл только если не было ошибок
+        if not self.has_error and os.path.exists(log_file):
+            try:
+                os.remove(log_file)
+                print(f"Log file {log_file} deleted successfully.")
+            except Exception as e:
+                print(f"Error deleting log file {log_file}: {e}")
+
+
+def register_exit_handler(app):
+    atexit.register(app.on_close)
+
+# Точка входа программы
 if __name__ == "__main__":
+    logging.debug("Application started with args: %s", sys.argv)
     root = tkinterdnd2.TkinterDnD.Tk()
     app = AutoclickerApp(root)
+    register_exit_handler(app)  # Регистрируем обработчик выхода
     root.mainloop()
+    app.on_close()  # Вызываем on_close после завершения mainloop
+    root.destroy()  # Уничтожаем окно после on_close
