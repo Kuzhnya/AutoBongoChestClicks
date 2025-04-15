@@ -1,0 +1,22 @@
+{
+    "delay_between_clicks": 0.2,
+    "delay_after_disappearance": 10.0,
+    "clicks_per_cycle": 3,
+    "dark_theme": true,
+    "language": "RU",
+    "autostart": false,
+    "image_paths": [],
+    "last_image_path": "",
+    "window_geometry": "750x847+1389+178",
+    "search_area": null,
+    "click_conditions": {
+        "min_images": 1,
+        "click_if_not_found": false,
+        "max_clicks": 0
+    },
+    "sequence_mode": false,
+    "hotkeys": {
+        "start": "f11",
+        "stop": "f12"
+    }
+}
