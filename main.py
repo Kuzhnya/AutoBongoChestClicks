@@ -28,12 +28,32 @@ import atexit
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-# Создаем файловый обработчик с режимом перезаписи (mode='w')
-file_handler = logging.FileHandler("autoclicker_debug.log", mode='w')
-file_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+# Определяем путь к приложению
+if getattr(sys, 'frozen', False):
+    # Если приложение упаковано (PyInstaller)
+    app_dir = os.path.dirname(sys.executable)
+else:
+    # Если запускается как скрипт
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Указываем абсолютный путь для файла лога в директории приложения
+log_path = os.path.join(app_dir, "autoclicker_debug.log")
+try:
+    file_handler = logging.FileHandler(log_path, mode='w')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # Добавляем консольный обработчик для отладки (на случай, если файл не создаётся)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    logging.debug(f"Logging initialized. Log file: {log_path}")
+except Exception as e:
+    print(f"Error setting up logging: {e}")
 
 
 try:
@@ -71,6 +91,12 @@ class AutoclickerApp:
         self.is_closing = False  # Флаг, чтобы избежать повторного вызова on_close
         self.info_links = []
         self.settings = load_settings(DEFAULT_SETTINGS)
+        # Проверяем, что все ключи из DEFAULT_SETTINGS присутствуют
+        for key, value in DEFAULT_SETTINGS.items():
+            if key not in self.settings:
+                self.settings[key] = value
+                logging.warning(f"Missing setting '{key}' in settings, using default: {value}")
+        save_settings(self.settings)  # Сохраняем исправленные настройки
         self.languages = self.load_languages()
         self.running = False
         self.image_paths = []
@@ -99,17 +125,21 @@ class AutoclickerApp:
         self.setup_ui()
         self.apply_theme()
         self.setup_hotkeys()
+        atexit.register(self.on_close)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         if self.is_startup_launch() and self.settings["autostart"]:
             logging.debug("Autostart detected.")
+            logging.debug(f"sys.argv: {sys.argv}")
+            logging.debug(f"temp_image_paths: {self.temp_image_paths}")
             if self.temp_image_paths:
-                logging.debug("Images found. Minimizing to tray and starting click process.")
+                logging.info("Autostart: starting clicks with %d images", len(self.temp_image_paths))
+                self.status_text.set(self.languages[self.settings["language"]]["status_running"])
                 self.minimize_to_tray()
                 self.start_clicking()
             else:
-                logging.debug("No images found. Restoring to window mode.")
-                self.restore_from_tray()
+                logging.info("Autostart: no images, minimized to tray")
+                self.minimize_to_tray()
         else:
             logging.debug("Not an autostart launch. Starting in window mode.")
             self.root.deiconify()
@@ -235,17 +265,22 @@ class AutoclickerApp:
         original_paths = self.settings.get("image_paths", [])
         self.image_paths = []
         self.temp_image_paths = []
+        logging.debug(f"Loading images from settings: {original_paths}")
         for path in original_paths:
             if os.path.exists(path):
                 try:
-                    temp_path = os.path.join(tempfile.gettempdir(), f"autoclicker_temp_{len(self.temp_image_paths)}.png")
+                    temp_path = os.path.join(tempfile.gettempdir(),
+                                             f"autoclicker_temp_{len(self.temp_image_paths)}.png")
                     shutil.copy2(path, temp_path)
                     self.image_paths.append(path)
                     self.temp_image_paths.append(temp_path)
+                    logging.debug(f"Successfully loaded image: {path}, temp_path: {temp_path}")
                 except Exception as e:
-                    print(f"Error copying image {path}: {e}")
+                    logging.error(f"Error copying image {path}: {e}")
             else:
-                print(f"Image file not found: {path}")
+                logging.warning(f"Image file not found: {path}")
+        if not self.image_paths:
+            logging.warning("No valid images loaded.")
 
     def setup_hotkeys(self):
         keyboard.unhook_all()
@@ -819,24 +854,30 @@ class AutoclickerApp:
             logging.debug(f"Looking for icon at: {resource_path}")
 
             if not os.path.exists(resource_path):
-                logging.error(f"Icon file {resource_path} not found. Using default icon.")
-                image = Image.new('RGB', (16, 16), color='blue')
+                logging.warning(f"Icon file {resource_path} not found. Using default Tkinter icon.")
+                self.icon = pystray.Icon(
+                    "ImageAutoclicker",
+                    icon=Image.new('RGB', (16, 16), color='blue'),  # Заглушка
+                    title=self.languages[self.settings["language"]]["title"],
+                    menu=pystray.Menu(
+                        pystray.MenuItem(self.languages[self.settings["language"]]["restore"], self.restore_from_tray),
+                        pystray.MenuItem(self.languages[self.settings["language"]]["exit"], self.on_close)
+                    )
+                )
             else:
                 image = Image.open(resource_path)
-
-            lang = self.settings["language"]
-            self.icon = pystray.Icon(
-                "ImageAutoclicker",
-                icon=image,
-                title=self.languages[lang]["title"],
-                menu=pystray.Menu(
-                    pystray.MenuItem(self.languages[lang]["restore"], self.restore_from_tray),
-                    pystray.MenuItem(self.languages[lang]["exit"], self.on_close)
+                self.icon = pystray.Icon(
+                    "ImageAutoclicker",
+                    icon=image,
+                    title=self.languages[self.settings["language"]]["title"],
+                    menu=pystray.Menu(
+                        pystray.MenuItem(self.languages[self.settings["language"]]["restore"], self.restore_from_tray),
+                        pystray.MenuItem(self.languages[self.settings["language"]]["exit"], self.on_close)
+                    )
                 )
-            )
             logging.debug("System tray icon created successfully.")
         except Exception as e:
-            self.has_error = True  # Устанавливаем флаг ошибки
+            self.has_error = True
             logging.error(f"Error setting up system tray: {e}")
             self.icon = None
 
@@ -845,13 +886,15 @@ class AutoclickerApp:
 
     def minimize_to_tray(self):
         try:
+            logging.debug("Attempting to minimize to tray.")
             if not self.icon or not hasattr(self.icon, '_running') or not self.icon._running:
+                logging.debug("Setting up system tray.")
                 self.setup_system_tray()
 
             if not self.icon:
                 logging.error("Failed to create system tray icon")
-                self.root.withdraw()
-                self.has_error = True  # Устанавливаем флаг ошибки
+                self.has_error = True
+                self.root.withdraw()  # Сворачиваем окно, но не разворачиваем
                 return
 
             self.is_minimized = True
@@ -874,9 +917,9 @@ class AutoclickerApp:
             logging.debug("Tray notification sent successfully.")
             logging.debug("Application minimized to tray.")
         except Exception as e:
-            self.has_error = True  # Устанавливаем флаг ошибки
+            self.has_error = True
             logging.error(f"Error minimizing to tray: {e}")
-            self.root.deiconify()
+            self.root.withdraw()  # Сворачиваем, но не разворачиваем
 
     def restore_from_tray(self):
         try:
@@ -892,6 +935,9 @@ class AutoclickerApp:
             logging.error(f"Error restoring from tray: {e}")
 
     def on_closing(self):
+        if self.is_closing:  # Избегаем повторного вызова
+            return
+        logging.debug("Window close requested")
         self.minimize_to_tray()  # Сворачиваем в трей при закрытии
 
     def apply_language(self):
@@ -1051,33 +1097,35 @@ class AutoclickerApp:
                                  winreg.KEY_ALL_ACCESS)
             app_name = "ImageAutoclicker"
 
-            # Определяем путь приложения
             if getattr(sys, 'frozen', False):
                 app_path = f'"{sys.executable}" --startup'
             else:
                 app_path = f'"{sys.executable}" "{os.path.abspath(__file__)}" --startup'
 
+            try:
+                current_value, _ = winreg.QueryValueEx(key, app_name)
+                logging.debug(f"Current autostart value: {current_value}")
+            except FileNotFoundError:
+                logging.debug("Autostart not set in registry.")
+
             if value:
-                # Проверяем, существует ли запись и совпадает ли она с новым значением
                 try:
                     current_value, _ = winreg.QueryValueEx(key, app_name)
                     if current_value == app_path:
                         logging.debug("Autostart already set with the same path, skipping update.")
                         winreg.CloseKey(key)
-                        return  # Ничего не делаем, если значение уже правильное
+                        return
                 except FileNotFoundError:
-                    pass  # Запись не существует, продолжаем
-
-                # Включаем автозапуск
-                logging.debug(f"Autostart enabled with path: {app_path}")
+                    pass
+                logging.info(f"Autostart enabled: {app_path}")
                 winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, app_path)
             else:
-                # Выключаем автозапуск
-                logging.debug("Disabling autostart.")
+                logging.info("Disabling autostart")
                 try:
                     winreg.DeleteValue(key, app_name)
+                    logging.debug("Autostart disabled.")
                 except FileNotFoundError:
-                    pass  # Если записи нет, игнорируем ошибку
+                    logging.debug("Autostart was not set, nothing to delete.")
 
             winreg.CloseKey(key)
         except Exception as e:
@@ -1256,9 +1304,12 @@ class AutoclickerApp:
         top = min(self.start_y, end_y) - monitor["top"]
         width = abs(self.start_x - end_x)
         height = abs(self.start_y - end_y)
-        # Проверяем, что ширина и высота больше 0
-        if width <= 0 or height <= 0:
-            print("Selected area is too small, resetting search area.")
+        if width < 10 or height < 10:
+            logging.warning("Selected area too small, resetting")
+            messagebox.showwarning(
+                self.languages[self.settings["language"]]["warning"],
+                "Область слишком мала"
+            )
             self.search_area = None
             self.settings["search_area"] = None
         else:
@@ -1270,6 +1321,7 @@ class AutoclickerApp:
                 "monitor_idx": self.monitor_idx
             }
             self.settings["search_area"] = self.search_area
+            logging.info(f"Area selected: {self.search_area}")
         save_settings(self.settings)
         self.selection_window.destroy()
 
@@ -1282,6 +1334,7 @@ class AutoclickerApp:
             title=self.languages[lang]["title"],
             message=self.languages[lang]["area_cleared_message"]
         )
+        logging.info("Search area cleared")
 
     def configure_conditions(self):
         self.root.update()
@@ -1420,22 +1473,39 @@ class AutoclickerApp:
             messagebox.showerror("Error", "Please enter valid numbers for minimum images and maximum clicks.")
 
     def start_clicking(self):
+        logging.debug("start_clicking called")
         if not self.temp_image_paths:
             lang = self.settings["language"]
-            messagebox.showerror("Error", self.languages[lang]["error_no_image"])
+            messagebox.showerror(
+                self.languages[lang]["title"],
+                self.languages[lang]["error_no_image"]
+            )
+            logging.warning("No images available to start clicking")
             return
-        if not self.running:
-            self.running = True
-            self.total_clicks = 0
+        if self.click_conditions["min_images"] > len(self.temp_image_paths):
             lang = self.settings["language"]
-            self.status_text.set(self.languages[lang]["status_running"])
-            threading.Thread(target=self.click_images, daemon=True).start()
+            messagebox.showerror(
+                self.languages[lang]["title"],
+                "Недостаточно изображений для минимального условия"
+            )
+            logging.warning("Start aborted: min_images exceeds loaded images")
+            return
+        if self.running:
+            logging.debug("Clicking already running, skipping")
+            return
+        self.running = True
+        lang = self.settings["language"]
+        self.status_text.set(self.languages[lang]["status_running"])
+        logging.info("Starting click process")
+        threading.Thread(target=self.click_images, daemon=True).start()
 
     def stop_clicking(self):
+        logging.debug("stop_clicking called")
         self.running = False
+        self.current_image_idx = 0
         lang = self.settings["language"]
         self.status_text.set(self.languages[lang]["status_stopped"])
-
+        logging.info("Clicking stopped, sequence index reset")
 
     def click_images(self):
         pyautogui.FAILSAFE = True
@@ -1443,24 +1513,22 @@ class AutoclickerApp:
         sct = mss.mss()
         current_image_idx = 0
 
-        # Найдем главный монитор (тот, у которого координаты ближе к (0, 0))
         monitors = sct.monitors
         default_monitor = None
         min_distance = float('inf')
-        for monitor in monitors[1:]:  # Пропускаем виртуальный монитор (индекс 0)
+        for monitor in monitors[1:]:
             distance = (monitor["left"] ** 2 + monitor["top"] ** 2) ** 0.5
             if distance < min_distance:
                 min_distance = distance
                 default_monitor = monitor
 
         if default_monitor is None:
-            print("No monitors found. Stopping click process.")
+            logging.error("No monitors found. Stopping click process.")
             self.stop_clicking()
             return
 
-        # Получаем размеры экрана для ограничения координат
         screen_width, screen_height = default_monitor["width"], default_monitor["height"]
-        print(f"Screen size: {screen_width}x{screen_height}")
+        logging.info(f"Screen size: {screen_width}x{screen_height}")
 
         while self.running:
             found_positions = []
@@ -1475,7 +1543,6 @@ class AutoclickerApp:
             else:
                 images_to_search = self.temp_image_paths
 
-            # Определяем регион поиска
             if self.search_area is not None and "monitor_idx" in self.search_area and self.search_area[
                 "monitor_idx"] < len(self.monitors):
                 monitor = self.monitors[self.search_area["monitor_idx"]]
@@ -1485,9 +1552,8 @@ class AutoclickerApp:
                     "width": self.search_area["width"],
                     "height": self.search_area["height"]
                 }
-                print(f"Using custom search area: {region}")
+                logging.debug(f"Search area: {region}")
             else:
-                # Используем главный монитор по умолчанию
                 monitor = default_monitor
                 region = {
                     "left": monitor["left"],
@@ -1495,11 +1561,10 @@ class AutoclickerApp:
                     "width": monitor["width"],
                     "height": monitor["height"]
                 }
-                print(f"Using default monitor: {region}")
+                logging.debug(f"Using default monitor: {region}")
 
-            # Проверяем, что регион валидный
             if region["width"] <= 0 or region["height"] <= 0:
-                print(f"Invalid region size: {region}. Stopping click process.")
+                logging.error(f"Invalid region size: {region}. Stopping click process.")
                 self.stop_clicking()
                 break
 
@@ -1507,7 +1572,7 @@ class AutoclickerApp:
                 try:
                     template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
                     if template is None:
-                        print(f"Failed to load template image: {img_path}")
+                        logging.error(f"Failed to load template image: {img_path}")
                         continue
 
                     screenshot = np.array(sct.grab(region))
@@ -1520,48 +1585,43 @@ class AutoclickerApp:
                     for pt in zip(*loc[::-1]):
                         x = pt[0] + template.shape[1] // 2
                         y = pt[1] + template.shape[0] // 2
-                        print(f"Raw coordinates from matchTemplate: ({x}, {y})")
-                        # Смещаем координаты относительно региона
                         x += region["left"]
                         y += region["top"]
-                        print(f"After adding region offset: ({x}, {y})")
-                        # Приводим координаты к системе pyautogui (относительно главного монитора)
                         x -= default_monitor["left"]
                         y -= default_monitor["top"]
-                        print(f"After adjusting for monitor offset: ({x}, {y})")
-                        # Ограничиваем координаты в пределах экрана
                         x = max(0, min(x, screen_width - 1))
                         y = max(0, min(y, screen_height - 1))
-                        print(f"Final click coordinates: ({x}, {y})")
                         found_positions.append((x, y))
 
                 except Exception as e:
-                    print(f"Error processing image {img_path}: {e}")
+                    logging.error(f"Error processing image {img_path}: {e}")
 
-            # Проверяем условия для клика
             should_click = False
+            logging.debug(
+                f"Conditions check: min_images={self.click_conditions['min_images']}, found={len(found_positions)}, click_if_not_found={self.click_conditions['click_if_not_found']}")
             if self.click_conditions["click_if_not_found"]:
-                should_click = len(found_positions) == 0  # Кликать, если изображение НЕ найдено
+                should_click = len(found_positions) == 0
             else:
-                should_click = len(found_positions) >= self.click_conditions[
-                    "min_images"]  # Кликать, если найдено достаточно изображений
+                should_click = len(found_positions) >= self.click_conditions["min_images"]
 
             if should_click:
-                # Проверяем максимальное количество кликов
                 if self.click_conditions["max_clicks"] > 0 and self.total_clicks >= self.click_conditions["max_clicks"]:
+                    logging.info("Max clicks reached, stopping")
                     self.stop_clicking()
                     break
 
                 if found_positions or self.click_conditions["click_if_not_found"]:
-                    # Если кликаем при ненайденных изображениях, используем центр региона
                     if not found_positions:
+                        if self.search_area is None:
+                            logging.warning("No search area for click_if_not_found, skipping")
+                            time.sleep(0.1)
+                            continue
                         x = region["left"] + region["width"] // 2
                         y = region["top"] + region["height"] // 2
                         x -= default_monitor["left"]
                         y -= default_monitor["top"]
                         x = max(0, min(x, screen_width - 1))
                         y = max(0, min(y, screen_height - 1))
-                        print(f"Click coordinates (center of region): ({x}, {y})")
                     else:
                         x, y = found_positions[0]
 
@@ -1571,13 +1631,17 @@ class AutoclickerApp:
                         pyautogui.click(x, y)
                         self.total_clicks += 1
                         lang = self.settings["language"]
-                        self.status_text.set(
-                            f"{self.languages[lang]['status_running']} ({self.total_clicks})"
-                        )
+                        status = f"{self.languages[lang]['status_running']} ({self.total_clicks})"
+                        if self.sequence_mode.get():
+                            status += " (последовательный режим)"
+                        self.status_text.set(status)
+                        logging.info(f"Click at ({x}, {y}), total_clicks={self.total_clicks}")
                         time.sleep(self.settings["delay_between_clicks"])
                     if self.sequence_mode.get():
                         current_image_idx += 1
-                time.sleep(self.settings["delay_after_disappearance"])
+                    time.sleep(self.settings["delay_after_disappearance"])
+                else:
+                    time.sleep(0.1)
             else:
                 time.sleep(0.1)
 
@@ -1590,44 +1654,71 @@ class AutoclickerApp:
         self.apply_theme()
 
     def on_close(self):
-        if self.is_closing:  # Пропускаем, если метод уже вызван
+        if self.is_closing:
             return
+        self.is_closing = True
+        logging.debug("Closing application")
 
-        self.is_closing = True  # Устанавливаем флаг, чтобы избежать повторного вызова
+        self.stop_clicking()
+        logging.debug("Clicking stopped")
+        time.sleep(0.1)
+
+        try:
+            keyboard.unhook_all()
+            logging.debug("Keyboard hooks cleared")
+        except Exception as e:
+            logging.error(f"Error clearing keyboard hooks: {e}")
+            self.has_error = True
+
+        try:
+            if hasattr(self, 'sct') and self.sct:
+                try:
+                    self.sct.close()
+                    logging.debug("MSS closed")
+                except AttributeError as e:
+                    logging.warning(f"Could not close MSS due to attribute error: {e}")
+                finally:
+                    self.sct = None
+        except Exception as e:
+            logging.error(f"Unexpected error closing MSS: {e}")
+            self.has_error = True
+
         try:
             if self.icon:
                 self.icon.stop()
                 self.icon = None
-                logging.debug("System tray icon stopped and reset on application close.")
+                logging.debug("System tray stopped")
+        except Exception as e:
+            logging.error(f"Error stopping system tray: {e}")
+            self.has_error = True
 
+        try:
             for temp_path in self.temp_image_paths:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
-
-            # Сохраняем геометрию окна только если оно ещё существует
-            if self.root.winfo_exists():
-                self.settings["window_geometry"] = self.root.geometry()
-            save_settings(self.settings)
-
+            logging.debug("Temporary files removed")
         except Exception as e:
+            logging.error(f"Error removing temporary files: {e}")
             self.has_error = True
-            logging.error(f"Error closing application: {e}")
 
-        # Закрываем обработчик лога и удаляем файл после обработки ошибок
-        log_file = "autoclicker_debug.log"
-        for handler in logging.getLogger().handlers[:]:
-            if isinstance(handler, logging.FileHandler) and handler.baseFilename == os.path.abspath(log_file):
-                handler.close()
-                logging.getLogger().removeHandler(handler)
-                logging.debug(f"Log handler for {log_file} closed.")
+        try:
+            self.root.destroy()
+            logging.debug("Root window destroyed")
+        except Exception as e:
+            logging.error(f"Error destroying root window: {e}")
+            self.has_error = True
 
-        # Удаляем лог-файл только если не было ошибок
-        if not self.has_error and os.path.exists(log_file):
+        if self.has_error:
+            logging.info("Errors detected, keeping log file")
+        else:
+            logging.info("No errors, removing log file")
             try:
-                os.remove(log_file)
-                print(f"Log file {log_file} deleted successfully.")
+                os.remove(log_path)
             except Exception as e:
-                print(f"Error deleting log file {log_file}: {e}")
+                logging.error(f"Error removing log file: {e}")
+
+        logging.debug("Exiting application")
+        os._exit(0)
 
 
 def register_exit_handler(app):
@@ -1641,4 +1732,3 @@ if __name__ == "__main__":
     register_exit_handler(app)  # Регистрируем обработчик выхода
     root.mainloop()
     app.on_close()  # Вызываем on_close после завершения mainloop
-    root.destroy()  # Уничтожаем окно после on_close
