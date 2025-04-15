@@ -20,6 +20,9 @@ if not exist "main.py" set "MISSING_FILES=%MISSING_FILES% main.py"
 if not exist "kuzhnya.ico" set "MISSING_FILES=%MISSING_FILES% kuzhnya.ico"
 if not exist "languages.json" set "MISSING_FILES=%MISSING_FILES% languages.json"
 if not exist "settings.json" set "MISSING_FILES=%MISSING_FILES% settings.json"
+if not exist "custom_widgets.py" set "MISSING_FILES=%MISSING_FILES% custom_widgets.py"
+if not exist "gui_logic.py" set "MISSING_FILES=%MISSING_FILES% gui_logic.py"
+
 
 if not "%MISSING_FILES%"=="" (
     echo The following required files are missing:%MISSING_FILES%
