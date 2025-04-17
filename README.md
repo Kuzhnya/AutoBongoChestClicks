@@ -24,7 +24,7 @@ Originally created for personal productivity, this project is now open-source. F
 
 ## 🖥️ Main Interface
 
-![Main Tab Preview](interface.png)
+![Main Tab Preview](imagesReadme/interface.png)
 
 ### Features:
 - **Select Image** – Add one or multiple images for the app to search and click. Drag & drop is supported.
@@ -41,10 +41,10 @@ Originally created for personal productivity, this project is now open-source. F
 
 ## ⚙️ Configure Conditions
 
-![Configure Button](condteng.png)  
+![Configure Button](imagesReadme/condteng.png)  
 Clicking this opens the advanced conditions window:
 
-![Conditions Window](condtpop.png)
+![Conditions Window](imagesReadme/condtpop.png)
 
 ### Advanced Options:
 1. **Min Images Required to Click** – Only click when a set number of identical images (e.g., 3 or more) are detected.
@@ -55,7 +55,7 @@ Clicking this opens the advanced conditions window:
 
 ## 🛠️ Settings Tab
 
-![Settings Tab](settingstab.png)
+![Settings Tab](imagesReadme/settingstab.png)
 
 - **Dark Mode** – Toggle light/dark themes.
 - **Run on Windows Startup** – Starts app with Windows (current user only).
@@ -67,7 +67,7 @@ Clicking this opens the advanced conditions window:
 
 ## ℹ️ About Tab
 
-![About Tab](abouteng.png)
+![About Tab](imagesReadme/abouteng.png)
 
 Includes links to my other resources and contact information.
 
