@@ -1,4 +1,4 @@
-# AutoBongoChestClicks
+# Image Autoclicker
 
 After I started using Bongo Cat, I really enjoyed the loot chest mechanic and the cosmetic rewards — especially being able to sell them on the Steam marketplace.
 
