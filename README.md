@@ -19,7 +19,7 @@ Originally created for personal productivity, this project is now open-source. F
 - 📂 Explore the source code  
 - 🔧 Build the app yourself  
 - 💡 Suggest improvements
-- 📦 [Download Latest Release](https://github.com/your-username/your-repo/releases/latest)  
+- 📦 [Download Latest Release](https://github.com/Kuzhnya/AutoBongoChestClicks/releases/tag/v.2.1.2)  
 
 ---
 
