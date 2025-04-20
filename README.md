@@ -8,7 +8,7 @@ That’s when I thought — why not make a lightweight tool that clicks for me w
 
 So I built a simple desktop utility using Python — a platform I know and love.
 
-**If u are using this app with Bongo Cat u need to set setting "Always on top" and use ur own image to prevent bugs with monitor resolution!!**
+**If u are using this app with Bongo Cat u need to set setting "Always on top" and use ur own image to prevent bugs with monitor and image resolution!!**
 
 ---
 
