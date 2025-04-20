@@ -8,6 +8,8 @@ That’s when I thought — why not make a lightweight tool that clicks for me w
 
 So I built a simple desktop utility using Python — a platform I know and love.
 
+**If u are using this app with Bongo Cat u need to set setting "Always on top"**
+
 ---
 
 ## ✨ Why Use This Tool?
