@@ -34,11 +34,11 @@
         "info": {
             "header": "Автокликер по изображению\nDeveloped by Kuzhnya",
             "links": [
+                {"label": "Github", "url": "https://github.com/Kuzhnya"},
                 {"label": "Twitch.tv", "url": "https://www.twitch.tv/kuzhnya"},
-                {"label": "Discord", "url": "https://discord.com/invite/p5FSuKUwQ3"},
+                {"label": "Discord", "url": "https://discord.gg/3CtQVF7gXM"},
                 {"label": "Telegram", "url": "https://t.me/kuzhnya"},
-                {"label": "Steam", "url": "https://steamcommunity.com/id/Kuzhnya/"},
-                {"label": "Steam Информация о программе", "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3460723612"}
+                {"label": "Steam", "url": "https://steamcommunity.com/id/Kuzhnya/"}
             ]
         },
         "error_no_image": "Сначала выберите изображение",
@@ -90,11 +90,11 @@
         "info": {
             "header": "Image AutoClicker\nDeveloped by Kuzhnya",
             "links": [
+                {"label": "Github", "url": "https://github.com/Kuzhnya"},
                 {"label": "Twitch.tv", "url": "https://www.twitch.tv/kuzhnya"},
-                {"label": "Discord", "url": "https://discord.com/invite/p5FSuKUwQ3"},
+                {"label": "Discord", "url": "https://discord.gg/3CtQVF7gXM"},
                 {"label": "Telegram", "url": "https://t.me/kuzhnya"},
-                {"label": "Steam", "url": "https://steamcommunity.com/id/Kuzhnya/"},
-                {"label": "Steam info about program (RU)", "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3460723612"}
+                {"label": "Steam", "url": "https://steamcommunity.com/id/Kuzhnya/"}
             ]
         },
         "error_no_image": "Please select an image first",
