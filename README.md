@@ -102,7 +102,7 @@ Enhance your workflow with these powerful features designed for seamless automat
   - If no images are set, it opens in windowed mode for easy configuration.
 - 🎨 **Dark Theme Support**: Comfortable for long sessions, with a sleek, modern look.
 - 🌐 **Multilingual Interface**: Choose your preferred language for a personalized experience.
-- 📧 **Quick Support Access**: Contact the developer directly via an integrated email link.
+- 📧 **Quick Support Access**: Contact the developer directly via an integrated links.
 
 ---
 
