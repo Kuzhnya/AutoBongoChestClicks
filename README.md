@@ -70,7 +70,7 @@ Clicking this opens the advanced conditions window:
 
 ## ℹ️ About Tab
 
-![About Tab](imagesReadme/abouteng.png)
+![About Tab](imagesReadme/aboutnew.png)
 
 Includes links to my other resources and contact information.
 
