@@ -91,6 +91,22 @@ This app is all about boosting productivity. Whether you’re working, studying,
 
 ---
 
+## ✨ Features
+
+Enhance your workflow with these powerful features designed for seamless automation:
+
+- 🛏️ **Minimize to System Tray**: Closing the window doesn't quit the app — it minimizes to the system tray, keeping your automation running in the background.
+- 🚀 **Auto-Start with Windows**: Enable auto-start to launch the app automatically on system boot, ready to work right away.
+- 🖼️ **Smart Operation Mode**:
+  - If reference images are loaded, the app starts minimized in the tray, silently performing clicks.
+  - If no images are set, it opens in windowed mode for easy configuration.
+- 🎨 **Dark Theme Support**: Comfortable for long sessions, with a sleek, modern look.
+- 🌐 **Multilingual Interface**: Choose your preferred language for a personalized experience.
+- 📧 **Quick Support Access**: Contact the developer directly via an integrated email link.
+
+---
+
+
 ## 📌 Note
 
 This tool was originally created for personal use but has grown into something potentially useful for others. Your contributions and feedback are welcome!
